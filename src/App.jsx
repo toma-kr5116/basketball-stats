@@ -93,23 +93,7 @@ const StatCard = ({ label, value, color }) => (
   </div>
 );
 
-function parseAIText(text) {
-  return text.split("\n").map((line, i) => {
-    if (line.startsWith("## ")) return (
-      <div key={i} style={{ color: C.orange, fontWeight: 700, fontSize: 13, marginTop: 16, marginBottom: 6, letterSpacing: 0.5 }}>
-        {line.replace("## ", "")}
-      </div>
-    );
-    if (/^[・•\-]/.test(line)) return (
-      <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, fontSize: 13, lineHeight: 1.7 }}>
-        <span style={{ color: C.orange, flexShrink: 0 }}>▸</span>
-        <span>{line.replace(/^[・•\-]\s*/, "")}</span>
-      </div>
-    );
-    if (line.trim() === "") return <div key={i} style={{ height: 4 }} />;
-    return <div key={i} style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 4 }}>{line}</div>;
-  });
-}
+
 
 // ─── Main App ─────────────────────────────────────────────────────
 export default function App() {
@@ -117,8 +101,6 @@ export default function App() {
   const [teamTab, setTeamTab]   = useState("");
   const [matchInfo, setMatchInfo] = useState(DEFAULT_MATCH);
   const [teamsData, setTeamsData] = useState(enrichTeams(DEFAULT_TEAMS));
-  const [aiText, setAiText]     = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(null); // { ok, message }
   const [matchForm, setMatchForm] = useState(DEFAULT_MATCH);
@@ -288,45 +270,10 @@ export default function App() {
   const homeTotal  = Object.values(quarters.home).reduce((s,v) => s+v, 0);
   const awayTotal  = Object.values(quarters.away).reduce((s,v) => s+v, 0);
 
-  // ── AI analysis ───────────────────────────────────────────────
-  const generateAI = async () => {
-    setAiLoading(true); setAiText("");
-    const summaries = teamNames.map(name => {
-      const tt = teamsData[name].totals;
-      const top = teamsData[name].players.sort((a,b)=>b.pts-a.pts).slice(0,3).map(p=>`${p.name}${p.pts}点`).join(", ");
-      return `【${name}】得点:${tt.pts} 3P:${tt["3pm"]}/${tt["3pa"]}(${tt["3pp"]}%) 2P:${tt["2pm"]}/${tt["2pa"]}(${tt["2pp"]}%) FT:${tt.ftm}/${tt.fta}(${tt.ftp}%) RBD:${tt.tot}(OF:${tt.or}/DF:${tt.dr}) AST:${tt.ast} TO:${tt.to} 主要選手:${top}`;
-    }).join("\n");
 
-    const prompt = `バスケットボールスタッツアナリストとして以下の試合データを分析してください。
-
-試合: ${matchInfo.home} ${matchInfo.homeScore} - ${matchInfo.awayScore} ${matchInfo.away}
-
-${summaries}
-
-以下の形式で分析してください:
-
-## 勝敗の分岐点
-
-## ${matchInfo.home}の改善ポイント
-
-## 次戦に向けたキーポイント
-
-コーチや選手がすぐ活かせる、具体的な数値を交えた実践的な内容で書いてください。`;
-
-    try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] })
-      });
-      const data = await res.json();
-      setAiText(data.content?.map(b => b.text || "").join("\n") || "分析に失敗しました");
-    } catch { setAiText("エラーが発生しました。"); }
-    setAiLoading(false);
-  };
 
   // ─── Render ────────────────────────────────────────────────────
-  const tabs = [["score","📋","スコア"],["chart","📊","グラフ"],["ai","🤖","AI分析"],["data","📁","データ"]];
+  const tabs = [["score","📋","スコア"],["chart","📊","グラフ"],["data","📁","データ"]];
 
   const TeamSelector = () => (
     <div style={{ display:"flex", gap:6, marginBottom:12 }}>
@@ -584,45 +531,7 @@ ${summaries}
         </>
       )}
 
-      {/* ══════════════════════════════════════════════════════════
-          AI ANALYSIS TAB
-      ══════════════════════════════════════════════════════════ */}
-      {tab === "ai" && (
-        <>
-          <div style={{ background:C.card, borderRadius:12, padding:18, marginBottom:12, border:`1px solid ${C.border}` }}>
-            <div style={{ fontSize:13, color:C.muted, lineHeight:1.7, marginBottom:14 }}>
-              試合スタッツをAIが解析。勝敗の分岐点・改善ポイント・次戦アドバイスを自動生成します。
-            </div>
-            <button onClick={generateAI} disabled={aiLoading} style={{
-              width:"100%", padding:14, borderRadius:10, border:"none",
-              cursor:aiLoading?"default":"pointer",
-              background:aiLoading?"rgba(255,124,53,0.35)":`linear-gradient(135deg,${C.orange},#FF5500)`,
-              color:"#fff", fontWeight:800, fontSize:14, letterSpacing:0.5,
-              boxShadow:aiLoading?"none":"0 4px 16px rgba(255,124,53,0.3)",
-            }}>{aiLoading ? "⏳  分析中..." : "🤖  AI傾向分析を生成する"}</button>
-          </div>
-          {aiLoading && (
-            <div style={{ background:C.card, borderRadius:12, padding:32, textAlign:"center", border:`1px solid ${C.border}` }}>
-              <div style={{ fontSize:13, color:C.muted, lineHeight:2 }}>スタッツを解析しています...<br />しばらくお待ちください</div>
-            </div>
-          )}
-          {aiText && !aiLoading && (
-            <div style={{ background:C.card, borderRadius:12, padding:20, border:`1.5px solid ${C.orange}35` }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
-                <div style={{ width:8, height:8, borderRadius:"50%", background:C.orange }} />
-                <span style={{ fontSize:12, color:C.orange, fontWeight:700, letterSpacing:1, textTransform:"uppercase" }}>AI分析レポート</span>
-              </div>
-              <div style={{ fontSize:13, lineHeight:1.8, color:C.text }}>{parseAIText(aiText)}</div>
-            </div>
-          )}
-          {!aiText && !aiLoading && (
-            <div style={{ textAlign:"center", padding:"48px 20px", color:C.muted, fontSize:13 }}>
-              <div style={{ fontSize:36, marginBottom:12 }}>🏀</div>
-              ボタンを押してAI分析をスタート
-            </div>
-          )}
-        </>
-      )}
+
 
       {/* ══════════════════════════════════════════════════════════
           DATA UPLOAD TAB
