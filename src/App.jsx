@@ -102,6 +102,9 @@ export default function App() {
   const [matchInfo, setMatchInfo] = useState(DEFAULT_MATCH);
   const [teamsData, setTeamsData] = useState(enrichTeams(DEFAULT_TEAMS));
   const [dragOver, setDragOver] = useState(false);
+  const [screenshotLoading, setScreenshotLoading] = useState(false);
+  const [screenshotPreview, setScreenshotPreview] = useState(null);
+  const screenshotInputRef = useRef(null);
   const [uploadStatus, setUploadStatus] = useState(null); // { ok, message }
   const [matchForm, setMatchForm] = useState(DEFAULT_MATCH);
   const [showCsvModal, setShowCsvModal] = useState(false);
@@ -204,7 +207,44 @@ export default function App() {
     handleFile(e.dataTransfer.files[0]);
   }, [handleFile]);
 
-  // ── CSV Template: open copy modal ─────────────────────────────
+  // ── Screenshot analyze ────────────────────────────────────────
+  const analyzeScreenshot = useCallback(async (file) => {
+    if (!file) return;
+    setScreenshotLoading(true);
+    setUploadStatus(null);
+
+    // preview
+    const reader = new FileReader();
+    reader.onload = (e) => setScreenshotPreview(e.target.result);
+    reader.readAsDataURL(file);
+
+    // base64 for API
+    const toBase64 = (f) => new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(",")[1]);
+      r.onerror = rej;
+      r.readAsDataURL(f);
+    });
+
+    try {
+      const imageBase64 = await toBase64(file);
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64, mimeType: file.type }),
+      });
+      const data = await res.json();
+      if (data.csv) {
+        processCSV(data.csv);
+        setUploadStatus({ ok: true, message: "✅ スクショからスタッツを読み取りました！" });
+      } else {
+        setUploadStatus({ ok: false, message: data.error || "読み取りに失敗しました" });
+      }
+    } catch {
+      setUploadStatus({ ok: false, message: "エラーが発生しました。もう一度試してください。" });
+    }
+    setScreenshotLoading(false);
+  }, [processCSV]);
   const openCsvModal = () => { setShowCsvModal(true); setCsvCopied(false); };
   const copyCsvTemplate = async () => {
     try {
@@ -545,7 +585,44 @@ export default function App() {
             </div>
           )}
 
-          {/* Step 1: Template download */}
+          {/* ── Screenshot Upload ── */}
+          <div style={{ background:C.card, borderRadius:12, padding:18, marginBottom:12, border:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:12, fontWeight:700, color:C.muted, letterSpacing:1, textTransform:"uppercase", marginBottom:10 }}>
+              🆕 スクショから自動読み取り
+            </div>
+            <div style={{ fontSize:13, color:C.muted, lineHeight:1.7, marginBottom:14 }}>
+              ボックススコアのスクショをアップロードするとAIが自動でスタッツを読み取ります。
+            </div>
+
+            {screenshotPreview && (
+              <div style={{ marginBottom:12, borderRadius:10, overflow:"hidden", border:`1px solid ${C.border}` }}>
+                <img src={screenshotPreview} alt="preview" style={{ width:"100%", display:"block" }} />
+              </div>
+            )}
+
+            <input
+              ref={screenshotInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display:"none" }}
+              onChange={e => analyzeScreenshot(e.target.files[0])}
+            />
+            <button
+              onClick={() => screenshotInputRef.current?.click()}
+              disabled={screenshotLoading}
+              style={{
+                width:"100%", padding:13, borderRadius:10, border:"none",
+                cursor: screenshotLoading ? "default" : "pointer",
+                background: screenshotLoading ? "rgba(255,124,53,0.35)" : `linear-gradient(135deg,${C.orange},#FF5500)`,
+                color:"#fff", fontWeight:700, fontSize:13,
+                boxShadow: screenshotLoading ? "none" : "0 4px 16px rgba(255,124,53,0.25)",
+              }}
+            >
+              {screenshotLoading ? "⏳ AIが読み取り中..." : "📷 スクショをアップロード"}
+            </button>
+          </div>
+
+          {/* ── CSV Upload ── */}
           <div style={{ background:C.card, borderRadius:12, padding:18, marginBottom:12, border:`1px solid ${C.border}` }}>
             <div style={{ fontSize:12, fontWeight:700, color:C.muted, letterSpacing:1, textTransform:"uppercase", marginBottom:10 }}>
               STEP 1 · テンプレートをダウンロード
